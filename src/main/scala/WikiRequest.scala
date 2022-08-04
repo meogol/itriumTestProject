@@ -36,7 +36,7 @@ class WikiRequest {
       }
       case socketException: SocketException => {
         println(s"Connection reset in page $pageName. Drop network.")
-        "415"
+        "420"
       }
     }
   }
@@ -121,7 +121,7 @@ class WikiRequest {
 
   def analyzePage(pageName: String, pageLang: String): Unit = {
     val page = getPage(pageName, pageLang)
-    if (page == "404" ||  page == "400" ||  page == "410" ||  page == "415") {
+    if (page == "404" ||  page == "400" ||  page == "410" ||  page == "415" ||  page == "420") {
       breakable {
         break
       }
