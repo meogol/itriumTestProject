@@ -1,4 +1,4 @@
-import requests.{RequestFailedException, UnknownHostException}
+import requests.{RequestFailedException, TimeoutException, UnknownHostException}
 
 import java.util.Dictionary
 import scala.collection.mutable.ArrayBuffer
@@ -24,6 +24,10 @@ class WikiRequest {
       case hostException: UnknownHostException => {
         println(s"network error")
         "400"
+      }
+      case timeoutException: TimeoutException =>{
+        println(s"timeout request $pageName")
+        "410"
       }
     }
   }
@@ -108,7 +112,7 @@ class WikiRequest {
 
   def analyzePage(pageName: String, pageLang: String): Unit = {
     val page = getPage(pageName, pageLang)
-    if (page == "404") {
+    if (page == "404" ||  page == "400" ||  page == "410") {
       breakable {
         break
       }
