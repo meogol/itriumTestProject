@@ -13,5 +13,5 @@ object ParsCategories extends Enumeration {
 object ParserParam{
   var File = ""
   var Category = ""
-  var ThreadCount = 1
+  var ThreadCount = 10
 }

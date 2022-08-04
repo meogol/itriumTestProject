@@ -1,5 +1,6 @@
 import requests.{RequestFailedException, TimeoutException, UnknownHostException}
 
+import java.net.{BindException, SocketException}
 import java.util.Dictionary
 import scala.collection.mutable.ArrayBuffer
 import scala.util.control.Breaks.{break, breakable}
@@ -28,6 +29,14 @@ class WikiRequest {
       case timeoutException: TimeoutException =>{
         println(s"timeout request $pageName")
         "410"
+      }
+      case bindException: BindException =>{
+        println(s"Address already in use: no further information in page $pageName")
+        "415"
+      }
+      case socketException: SocketException => {
+        println(s"Connection reset in page $pageName. Drop network.")
+        "415"
       }
     }
   }
@@ -112,7 +121,7 @@ class WikiRequest {
 
   def analyzePage(pageName: String, pageLang: String): Unit = {
     val page = getPage(pageName, pageLang)
-    if (page == "404" ||  page == "400" ||  page == "410") {
+    if (page == "404" ||  page == "400" ||  page == "410" ||  page == "415") {
       breakable {
         break
       }
