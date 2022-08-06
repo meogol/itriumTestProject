@@ -1,7 +1,6 @@
 import org.json4s.{DefaultFormats, Formats}
 import org.json4s.jackson.JsonMethods.parse
 
-import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
@@ -84,6 +83,7 @@ class WikiRequest {
 
       val taskBatch = createTaskBatches(count, pageLang)
 
+      var length = 0
       for (batch <- taskBatch) {
         for (thread <- batch) {
           thread.start()
@@ -92,11 +92,13 @@ class WikiRequest {
         for (thread <- batch) {
           thread.join()
         }
+        length+=1
+        print(s"\r для эпохи $i выполнено $length из ${taskBatch.length} \t")
       }
 
       val timeStop = System.currentTimeMillis
       val time = timeStop - timeStart
-      println(s"level $i time $time")
+      println(s"level $i time $time мс")
 
       i += 1
       count = listSize
