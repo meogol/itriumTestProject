@@ -1,92 +1,78 @@
-import requests.{RequestFailedException, TimeoutException, UnknownHostException}
+import org.json4s.{DefaultFormats, Formats}
+import org.json4s.jackson.JsonMethods.parse
 
-import java.net.{BindException, SocketException}
-import java.util.Dictionary
+import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
+import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
-import scala.util.control.Breaks.{break, breakable}
 
 class WikiRequest {
-  private val searcher = new SearchLinq()
   private val searchedLinqList = new ArrayBuffer[String]()
-  private val analyseTimeList = collection.mutable.Map[Int, Long]()
 
-  def getAnalyseTimeList = analyseTimeList
+  def getLinksJson(pageName: String, lang: String): List[Page] = {
+    val page = requests.get(s"https://$lang.wikipedia.org/w/api.php", params =
+      Map(
+        "action" -> RequestParams.action,
+        "format" -> RequestParams.format,
+        "prop" -> RequestParams.prop,
+        "titles" -> pageName,
+        "generator" -> RequestParams.generator,
+        "formatversion" -> RequestParams.formatversion,
+        "gplnamespace" -> RequestParams.gplnamespace,
+        "gpllimit" -> RequestParams.gpllimit
+      )
+    )
 
-  private def getPage(pageName: String, pageLang: String): String = {
-    try {
-      val page = requests.get(s"https://$pageLang.wikipedia.org/w/rest.php/v1/page/$pageName")
-      page.text()
-    }
-    catch {
-      case e: RequestFailedException => {
-        println(s"errorLinq. Page name $pageName")
-        "404"
-      }
-      case hostException: UnknownHostException => {
-        println(s"network error")
-        "400"
-      }
-      case timeoutException: TimeoutException =>{
-        println(s"timeout request $pageName")
-        "410"
-      }
-      case bindException: BindException =>{
-        println(s"Address already in use: no further information in page $pageName")
-        "415"
-      }
-      case socketException: SocketException => {
-        println(s"Connection reset in page $pageName. Drop network.")
-        "420"
-      }
-    }
+    val res = page.text()
+    val json = parse(res)
+    val jArrayPages = (json \ "query" \ "pages")
+
+    implicit val formats: Formats = DefaultFormats
+    val pageLinkList = jArrayPages.extract[List[Page]]
+
+    pageLinkList
   }
 
   def linqCountRec(pageName: String, pageLang: String, depthSearch: Int = 1): Int = {
-    val listLen = searchedLinqList.length
-    val timeStart = System.currentTimeMillis
+    searchedLinqList.clear()
+    searchedLinqList += pageName
+    var timeStart = System.currentTimeMillis
 
-    analyzePage(pageName, pageLang)
+    @tailrec
+    def lincCount(pageIndex: Int, pageLang: String, levelIndex: Int, depthSearch: Int = 1): Int = {
+      analyzePage(searchedLinqList(pageIndex), pageLang)
 
-    val timeStop = System.currentTimeMillis
-    val time = timeStop - timeStart
-    val thisLevelTime = analyseTimeList.getOrElse(depthSearch, 0L)
-    val resultLevelTime = thisLevelTime + time
-    analyseTimeList += (depthSearch -> resultLevelTime)
+      var thisLevelIndex = levelIndex
+      var depth = depthSearch
+      if (thisLevelIndex == 0 || pageIndex == thisLevelIndex) {
+        thisLevelIndex = searchedLinqList.length - 1
+        depth = depthSearch - 1
 
-    val count = depthSearch - 1
-    val arrThreads = ArrayBuffer[Thread]()
-    if (count > 0) {
-      for (i <- (listLen to (searchedLinqList.length - 1))) {
-        val page = searchedLinqList(i)
-        val task: Runnable = () => linqCountRec(page, pageLang, count)
-        val thread = new Thread(task)
-
-        arrThreads += thread
-        thread.start()
-
+        val timeStop = System.currentTimeMillis
+        val time = timeStop - timeStart
+        println(s"level $levelIndex time $time")
+        timeStart = System.currentTimeMillis
       }
+
+      if (depthSearch <= 0)
+        levelIndex
+      else
+        lincCount(pageIndex + 1, pageLang, thisLevelIndex, depth)
     }
 
-    for (i <- arrThreads)
-      i.join()
-
-    searchedLinqList.length
+    lincCount(0, pageLang, 0, depthSearch)
   }
 
-  def addLinqsInPageList(page: String): Unit = {
-    val searchedLinqPatterns = searcher.searchLinq(page)
-    val linqList = searcher.parsLinq(searchedLinqPatterns)
-
-    for (item <- linqList) {
-      if (!searchedLinqList.contains(item))
-        searchedLinqList += item
+  def addLinqsInPageList(pageLinkList: List[Page]): Unit = {
+    for (item <- pageLinkList) {
+      if (!searchedLinqList.contains(item.title) && !item.missing)
+        searchedLinqList += item.title
     }
   }
 
   def linqCount(pageName: String, pageLang: String, depthSearch: Int = 1): Int = {
     searchedLinqList.clear()
-    var i = 0
     searchedLinqList += pageName
+    var i = 0
     var count = 0
     val arrThreads = ArrayBuffer[Thread]()
 
@@ -98,7 +84,7 @@ class WikiRequest {
 
       val taskBatch = createTaskBatches(count, pageLang)
 
-      for(batch <- taskBatch) {
+      for (batch <- taskBatch) {
         for (thread <- batch) {
           thread.start()
         }
@@ -115,20 +101,15 @@ class WikiRequest {
       i += 1
       count = listSize
     }
-    searchedLinqList.length
+    searchedLinqList.length - 1
   }
 
 
   def analyzePage(pageName: String, pageLang: String): Unit = {
-    val page = getPage(pageName, pageLang)
-    if (page == "404" ||  page == "400" ||  page == "410" ||  page == "415" ||  page == "420") {
-      breakable {
-        break
-      }
-    }
+    val links = getLinksJson(pageName, pageLang)
 
     searchedLinqList.synchronized(
-      addLinqsInPageList(page)
+      addLinqsInPageList(links)
     )
   }
 
@@ -144,6 +125,7 @@ class WikiRequest {
       val thread = new Thread(task)
 
       if (threadCount == ParserParam.ThreadCount) {
+        threadCount = 0
         arrThreads += threadBatch
         threadBatch = ArrayBuffer[Thread]()
       }
@@ -152,7 +134,7 @@ class WikiRequest {
       threadCount += 1
     }
 
-    if(threadBatch.nonEmpty)
+    if (threadBatch.nonEmpty)
       arrThreads += threadBatch
 
     arrThreads
