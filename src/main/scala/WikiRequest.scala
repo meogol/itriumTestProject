@@ -1,32 +1,43 @@
 import org.json4s.{DefaultFormats, Formats}
 import org.json4s.jackson.JsonMethods.parse
 
+import java.net.{SocketException, SocketTimeoutException}
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
 class WikiRequest {
   private val searchedLinqList = new ArrayBuffer[String]()
-
+  var res = ""
   def getLinksJson(pageName: String, lang: String): List[Page] = {
-    val page = requests.get(s"https://$lang.wikipedia.org/w/api.php", params =
-      Map(
-        "action" -> RequestParams.action,
-        "format" -> RequestParams.format,
-        "prop" -> RequestParams.prop,
-        "titles" -> pageName,
-        "generator" -> RequestParams.generator,
-        "formatversion" -> RequestParams.formatversion,
-        "gplnamespace" -> RequestParams.gplnamespace,
-        "gpllimit" -> RequestParams.gpllimit
+    try {
+      val page = requests.get(s"https://$lang.wikipedia.org/w/api.php", params =
+        Map(
+          "action" -> RequestParams.action,
+          "format" -> RequestParams.format,
+          "prop" -> RequestParams.prop,
+          "titles" -> pageName,
+          "generator" -> RequestParams.generator,
+          "formatversion" -> RequestParams.formatversion,
+          "gplnamespace" -> RequestParams.gplnamespace,
+          "gpllimit" -> RequestParams.gpllimit
+        )
       )
-    )
 
-    val res = page.text()
-    val json = parse(res)
-    val jArrayPages = (json \ "query" \ "pages")
+      res = page.text()
+    }catch {
+      case socketException: SocketException => println(s"socket exception in $pageName")
+      case socketTimeoutException: SocketTimeoutException => println(s"socket timeout exception in $pageName")
 
-    implicit val formats: Formats = DefaultFormats
-    val pageLinkList = jArrayPages.extract[List[Page]]
+    }
+
+    var pageLinkList = List[Page]()
+    if (res != "") {
+      val json = parse(res)
+      val jArrayPages = (json \ "query" \ "pages")
+
+      implicit val formats: Formats = DefaultFormats
+      pageLinkList = jArrayPages.extract[List[Page]]
+    }
 
     pageLinkList
   }

@@ -1,7 +1,7 @@
 object ParserParam {
   var File = ""
   var Category = ""
-  var ThreadCount = 20
+  var ThreadCount = 10
 }
 
 case class Page(pageid: Int,
