@@ -27,7 +27,7 @@ class WikiRequest {
     }catch {
       case socketException: SocketException => println(s"socket exception in $pageName")
       case socketTimeoutException: SocketTimeoutException => println(s"socket timeout exception in $pageName")
-
+      case timeoutException: requests.TimeoutException => println(s"timeout exception in $pageName")
     }
 
     var pageLinkList = List[Page]()
